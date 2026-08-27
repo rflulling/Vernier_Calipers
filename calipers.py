@@ -64,14 +64,14 @@ class CaliperApp:
                 with open(CONFIG_FILE, 'r') as f:
                     data = json.load(f)
                     self.settings.update(data)
-            except:
+            except Exception:
                 pass
 
     def save_settings(self):
         try:
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(self.settings, f)
-        except:
+        except Exception:
             pass
 
     def validate_2digits(self, P):
