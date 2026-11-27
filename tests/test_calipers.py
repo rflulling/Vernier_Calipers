@@ -34,12 +34,31 @@ class CalculatorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
             settings = default_settings()
-            settings["Inner"]["offset_in"] = -0.0123
+            for index, tool in enumerate(("Inner", "Outer", "Probe"), 1):
+                settings[tool]["offset_in"] = -index * 0.0123
+                settings[tool]["offset_mm"] = index * 0.123
             settings["Outer"]["scale_position"] = "past_zero"
             save_settings(path, settings)
             self.assertEqual(load_settings(path), settings)
             path.write_text("{", encoding="utf-8")
             self.assertEqual(load_settings(path), default_settings())
+
+    def test_existing_settings_gain_default_probe_without_losing_offsets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            old_settings = default_settings()
+            del old_settings["Probe"]
+            old_settings["Inner"]["offset_in"] = 0.125
+            old_settings["Outer"]["offset_mm"] = -0.25
+            save_settings(path, old_settings)
+            settings = load_settings(path)
+            self.assertEqual(settings["Inner"], old_settings["Inner"])
+            self.assertEqual(settings["Outer"], old_settings["Outer"])
+            self.assertEqual(settings["Probe"], default_settings()["Probe"])
+
+    def test_probe_uses_scale_direction(self):
+        self.assertAlmostEqual(corrected_reading(10, 0.25, "past_zero", tool="Probe"), 9.75)
+        self.assertAlmostEqual(corrected_reading(10, 0.25, "not_reached", tool="Probe"), 10.25)
 
 
 if __name__ == "__main__":

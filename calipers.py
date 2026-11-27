@@ -176,7 +176,7 @@ class CaliperCalculator(tk.Tk):
                 sub_tabs, tool, self.settings[tool], self._save,
             )
             preferences = SettingsPanel(
-                sub_tabs, tool, self.settings[tool], self._save,
+                sub_tabs, tool, self.settings[tool], reading.update_result,
             )
             sub_tabs.add(reading, text="Reading")
             sub_tabs.add(preferences, text="Settings")

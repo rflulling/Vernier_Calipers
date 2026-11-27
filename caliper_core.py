@@ -6,7 +6,7 @@ from pathlib import Path
 
 INCH_TO_MM = 25.4
 PLACES = ("1", "0.1", "0.01", "0.001", "0.0001")
-TOOLS = ("Inner", "Outer")
+TOOLS = ("Inner", "Outer", "Probe")
 DEFAULT_TOOL_SETTINGS = {
     "offset_in": 0.0,
     "offset_mm": 0.0,
