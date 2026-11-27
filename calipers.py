@@ -15,7 +15,7 @@ from caliper_core import (
 )
 
 
-def build_digit_stacks(parent, values, on_change):
+def build_digit_stacks(parent, values, on_change=None):
     stacks = ttk.Frame(parent)
     stacks.pack(fill="x")
     for column, (unit, title) in enumerate((("in", "Inches"), ("mm", "Metric"))):
@@ -27,11 +27,12 @@ def build_digit_stacks(parent, values, on_change):
             ttk.Label(group, text=place).grid(row=row, column=0, sticky="w", padx=(0, 8))
             entry = ttk.Spinbox(
                 group, from_=0, to=99, width=4, textvariable=values[unit][row - 1],
-                command=lambda unit=unit: on_change(unit),
             )
             entry.grid(row=row, column=1, sticky="e")
-            entry.bind("<KeyRelease>", lambda _event, unit=unit: on_change(unit))
-            entry.bind("<FocusOut>", lambda _event, unit=unit: on_change(unit))
+            if on_change:
+                entry.configure(command=lambda unit=unit: on_change(unit))
+                entry.bind("<KeyRelease>", lambda _event, unit=unit: on_change(unit))
+                entry.bind("<FocusOut>", lambda _event, unit=unit: on_change(unit))
         stacks.columnconfigure(column, weight=1)
 
 
@@ -120,7 +121,10 @@ class SettingsPanel(ttk.Frame):
 
         calculator = ttk.LabelFrame(self, text="Closed-jaw reading", padding=6)
         calculator.pack(fill="x", pady=(8, 0))
-        build_digit_stacks(calculator, self.digits, self._calculate)
+        build_digit_stacks(calculator, self.digits)
+        for unit in ("in", "mm"):
+            for variable in self.digits[unit]:
+                variable.trace_add("write", lambda *_args, unit=unit: self._calculate(unit))
 
         scale = ttk.LabelFrame(
             self, text="With the jaws closed, is the scale past zero or not yet complete?",

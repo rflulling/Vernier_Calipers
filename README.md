@@ -23,7 +23,9 @@ Closed-jaw reading. For calculated offsets, a scale that passes zero reverses
 the offset; a scale that has not reached zero applies it as entered. For inner
 jaws, selecting a gap reverses that direction and selecting overlap leaves it
 unchanged. These choices do not change a manually entered offset. The signed
-offset for the selected reading unit is added to the reading.
+offset for the selected reading unit is added to the reading. Calculator inputs
+are not saved, so after restarting, enter a closed-jaw reading again to
+recalculate an offset with different calibration choices.
 
 Run the focused calculator tests with:
 

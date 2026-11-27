@@ -115,12 +115,23 @@ class CalculatorGuiTests(unittest.TestCase):
                 self.select(settings, "not_reached")
                 self.assertEqual(float(settings.offset_in.get()), -0.3)
                 settings.digits["mm"][0].set("4")
-                settings._calculate("mm")
                 self.assertEqual(float(settings.offset_in.get()), -0.3)
                 self.assertEqual(float(settings.offset_mm.get()), 4)
                 settings.digits["mm"][0].set("invalid")
-                settings._calculate("mm")
                 self.assertEqual(float(settings.offset_mm.get()), 4)
+
+    def test_visiting_calculator_does_not_replace_manual_offset(self):
+        settings = self.settings["Outer"]
+        settings.master.master.master.select(settings.master.master)
+        settings.master.select(settings)
+        settings.offset_in.set("0.123")
+        self.app.update()
+        entry = next(widget for widget in descendants(settings) if isinstance(widget, ttk.Spinbox))
+        entry.focus_force()
+        entry.event_generate("<FocusOut>")
+        entry.event_generate("<KeyRelease>", keysym="Left")
+        self.app.update()
+        self.assertEqual(settings.offset_in.get(), "0.123")
 
     def test_tab_order_and_size(self):
         self.app.update()
