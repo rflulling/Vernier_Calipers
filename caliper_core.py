@@ -50,6 +50,12 @@ def load_settings(path):
             settings[tool]["scale_position"] = values["scale_position"]
         if values.get("jaw_fit") in ("overlap", "gap"):
             settings[tool]["jaw_fit"] = values["jaw_fit"]
+        if not isinstance(saved, dict) or saved.get("_version") != 2:
+            for key in ("offset_in", "offset_mm"):
+                settings[tool][key] = corrected_reading(
+                    0, settings[tool][key], settings[tool]["scale_position"],
+                    settings[tool]["jaw_fit"], tool,
+                )
     return settings
 
 
@@ -57,7 +63,7 @@ def save_settings(path, settings):
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", encoding="utf-8") as settings_file:
-        json.dump(settings, settings_file, indent=2)
+        json.dump({**settings, "_version": 2}, settings_file, indent=2)
 
 
 def calculate_reading(values):

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,6 +60,23 @@ class CalculatorTests(unittest.TestCase):
     def test_probe_uses_scale_direction(self):
         self.assertAlmostEqual(corrected_reading(10, 0.25, "past_zero", tool="Probe"), 9.75)
         self.assertAlmostEqual(corrected_reading(10, 0.25, "not_reached", tool="Probe"), 10.25)
+
+    def test_legacy_offsets_are_migrated_to_signed_corrections(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            legacy = default_settings()
+            for tool in legacy:
+                legacy[tool].update(offset_in=0.1, offset_mm=-0.2, scale_position="past_zero")
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            settings = load_settings(path)
+            for tool in legacy:
+                for key in ("offset_in", "offset_mm"):
+                    self.assertAlmostEqual(
+                        settings[tool][key],
+                        corrected_reading(0, legacy[tool][key], "past_zero", "gap", tool),
+                    )
+            save_settings(path, settings)
+            self.assertEqual(load_settings(path), settings)
 
 
 if __name__ == "__main__":

@@ -70,27 +70,68 @@ class CalculatorGuiTests(unittest.TestCase):
                 self.app.update()
                 self.assertEqual(self.result(tool), ("1.0000 in", "25.4000 mm"))
                 settings.offset_in.set("0.1")
-                expected = ("0.9000 in", "22.8600 mm") if tool == "Inner" else (
-                    "1.1000 in", "27.9400 mm"
-                )
-                self.assertEqual(self.result(tool), expected)
+                self.assertEqual(self.result(tool), ("1.1000 in", "27.9400 mm"))
 
                 reading.values["mm"][0].set("25")
                 reading.values["mm"][1].set("4")
                 settings.offset_mm.set("0.4")
                 self.select(reading, "mm")
-                expected = ("0.9843 in", "25.0000 mm") if tool == "Inner" else (
-                    "1.0157 in", "25.8000 mm"
-                )
-                self.assertEqual(self.result(tool), expected)
+                self.assertEqual(self.result(tool), ("1.0157 in", "25.8000 mm"))
                 self.select(settings, "past_zero")
-                expected = ("1.0157 in", "25.8000 mm") if tool == "Inner" else (
-                    "0.9843 in", "25.0000 mm"
-                )
-                self.assertEqual(self.result(tool), expected)
+                self.assertEqual(self.result(tool), ("1.0157 in", "25.8000 mm"))
 
         self.select(self.settings["Inner"], "overlap")
-        self.assertEqual(self.result("Inner"), ("0.9843 in", "25.0000 mm"))
+        self.assertEqual(self.result("Inner"), ("1.0157 in", "25.8000 mm"))
+
+    def test_calculated_offsets_follow_calibration_controls_independently(self):
+        for tool in ("Inner", "Outer", "Probe"):
+            with self.subTest(tool=tool):
+                settings = self.settings[tool]
+                settings.offset_mm.set("2")
+                sub_tabs = settings.master
+                sub_tabs.master.master.select(sub_tabs.master)
+                sub_tabs.select(settings)
+                self.app.update()
+                entry = next(
+                    widget for widget in descendants(settings)
+                    if isinstance(widget, ttk.Spinbox)
+                    and widget.cget("textvariable") == str(settings.digits["in"][1])
+                )
+                entry.focus_force()
+                entry.delete(0, "end")
+                entry.insert(0, "1")
+                entry.event_generate("<KeyRelease>")
+                self.app.update()
+                expected = -0.1 if tool == "Inner" else 0.1
+                self.assertAlmostEqual(float(settings.offset_in.get()), expected)
+                self.assertEqual(float(settings.offset_mm.get()), 2)
+                self.select(settings, "past_zero")
+                self.assertAlmostEqual(float(settings.offset_in.get()), -expected)
+                self.assertEqual(float(settings.offset_mm.get()), 2)
+                if tool == "Inner":
+                    self.select(settings, "overlap")
+                    self.assertAlmostEqual(float(settings.offset_in.get()), expected)
+                settings.offset_in.set("-0.3")
+                self.select(settings, "not_reached")
+                self.assertEqual(float(settings.offset_in.get()), -0.3)
+                settings.digits["mm"][0].set("4")
+                settings._calculate("mm")
+                self.assertEqual(float(settings.offset_in.get()), -0.3)
+                self.assertEqual(float(settings.offset_mm.get()), 4)
+                settings.digits["mm"][0].set("invalid")
+                settings._calculate("mm")
+                self.assertEqual(float(settings.offset_mm.get()), 4)
+
+    def test_tab_order_and_size(self):
+        self.app.update()
+        notebook = self.readings["Outer"].master
+        self.assertEqual([notebook.tab(tab, "text") for tab in notebook.tabs()],
+                         ["Reading", "Settings"])
+        outer = notebook.master.master
+        self.assertEqual([outer.tab(tab, "text") for tab in outer.tabs()],
+                         ["Inner", "Outer", "Probe"])
+        width = round(self.app.winfo_fpixels("1i"))
+        self.assertEqual(str(outer.tk.call(outer._w, "identify", "tab", width - 1, 10)), "0")
 
     def test_six_offsets_persist_without_measurement_inputs(self):
         for index, tool in enumerate(("Inner", "Outer", "Probe"), 1):
