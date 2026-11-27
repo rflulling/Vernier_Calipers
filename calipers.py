@@ -15,6 +15,27 @@ from caliper_core import (
 )
 
 
+def build_digit_stacks(parent, values, on_change=None):
+    stacks = ttk.Frame(parent)
+    stacks.pack(fill="x")
+    for column, (unit, title) in enumerate((("in", "Inches"), ("mm", "Metric"))):
+        group = ttk.LabelFrame(stacks, text=title, padding=5)
+        group.grid(row=0, column=column, sticky="nsew", padx=(0, 5 if column == 0 else 0))
+        ttk.Label(group, text="Place").grid(row=0, column=0, sticky="w")
+        ttk.Label(group, text="Value").grid(row=0, column=1, sticky="e")
+        for row, place in enumerate(PLACES, 1):
+            ttk.Label(group, text=place).grid(row=row, column=0, sticky="w", padx=(0, 8))
+            entry = ttk.Spinbox(
+                group, from_=0, to=99, width=4, textvariable=values[unit][row - 1],
+            )
+            entry.grid(row=row, column=1, sticky="e")
+            if on_change:
+                entry.configure(command=lambda unit=unit: on_change(unit))
+                entry.bind("<KeyRelease>", lambda _event, unit=unit: on_change(unit))
+                entry.bind("<FocusOut>", lambda _event, unit=unit: on_change(unit))
+        stacks.columnconfigure(column, weight=1)
+
+
 class MeasurementPanel(ttk.Frame):
     def __init__(self, master, tool, settings, on_change):
         super().__init__(master, padding=8)
@@ -40,23 +61,7 @@ class MeasurementPanel(ttk.Frame):
                 command=self.update_result,
             ).pack(side="left", padx=(8, 0))
 
-        stacks = ttk.Frame(self)
-        stacks.pack(fill="x")
-        for column, (unit, title) in enumerate((("in", "Inches"), ("mm", "Metric"))):
-            group = ttk.LabelFrame(stacks, text=title, padding=5)
-            group.grid(row=0, column=column, sticky="nsew", padx=(0, 5 if column == 0 else 0))
-            ttk.Label(group, text="Place").grid(row=0, column=0, sticky="w")
-            ttk.Label(group, text="Value").grid(row=0, column=1, sticky="e")
-            for row, place in enumerate(PLACES, 1):
-                ttk.Label(group, text=place).grid(row=row, column=0, sticky="w", padx=(0, 8))
-                entry = ttk.Spinbox(
-                    group, from_=0, to=99, width=4, textvariable=self.values[unit][row - 1],
-                    command=self.update_result,
-                )
-                entry.grid(row=row, column=1, sticky="e")
-                entry.bind("<KeyRelease>", lambda _event: self.update_result())
-                entry.bind("<FocusOut>", lambda _event: self.update_result())
-            stacks.columnconfigure(column, weight=1)
+        build_digit_stacks(self, self.values, lambda _unit: self.update_result())
 
         output = ttk.LabelFrame(self, text="Corrected measurement", padding=6)
         output.pack(fill="x", pady=(8, 0))
@@ -77,13 +82,7 @@ class MeasurementPanel(ttk.Frame):
             reading = 0.0
         unit = self.source.get()
         key = "offset_in" if unit == "in" else "offset_mm"
-        corrected = corrected_reading(
-            reading,
-            self.settings[key],
-            self.settings["scale_position"],
-            self.settings["jaw_fit"],
-            self.tool,
-        )
+        corrected = reading + self.settings[key]
         inches, millimeters = converted_readings(corrected, unit)
         self.results["in"].configure(text=f"{inches:.4f} in")
         self.results["mm"].configure(text=f"{millimeters:.4f} mm")
@@ -100,6 +99,12 @@ class SettingsPanel(ttk.Frame):
         self.offset_mm = tk.StringVar(value=str(values["offset_mm"]))
         self.scale_position = tk.StringVar(value=values["scale_position"])
         self.jaw_fit = tk.StringVar(value=values["jaw_fit"])
+        self.digits = {
+            unit: [tk.StringVar(value="0") for _ in PLACES]
+            for unit in ("in", "mm")
+        }
+        self.calculated = {"in": False, "mm": False}
+        self._writing_calculation = False
         self._build()
 
     def _build(self):
@@ -114,6 +119,13 @@ class SettingsPanel(ttk.Frame):
         )
         offsets.columnconfigure(1, weight=1)
 
+        calculator = ttk.LabelFrame(self, text="Closed-jaw reading", padding=6)
+        calculator.pack(fill="x", pady=(8, 0))
+        build_digit_stacks(calculator, self.digits)
+        for unit in ("in", "mm"):
+            for variable in self.digits[unit]:
+                variable.trace_add("write", lambda *_args, unit=unit: self._calculate(unit))
+
         scale = ttk.LabelFrame(
             self, text="With the jaws closed, is the scale past zero or not yet complete?",
             padding=6,
@@ -125,7 +137,7 @@ class SettingsPanel(ttk.Frame):
         ):
             ttk.Radiobutton(
                 scale, text=label, value=value, variable=self.scale_position,
-                command=self._update,
+                command=self._update_calculations,
             ).pack(anchor="w")
 
         if self.tool == "Inner":
@@ -134,13 +146,38 @@ class SettingsPanel(ttk.Frame):
             for value, label in (("overlap", "Slide past each other"), ("gap", "Have a gap")):
                 ttk.Radiobutton(
                     fit, text=label, value=value, variable=self.jaw_fit,
-                    command=self._update,
+                    command=self._update_calculations,
                 ).pack(anchor="w")
 
-        for variable in (self.offset_in, self.offset_mm):
-            variable.trace_add("write", self._update)
+        for unit, variable in (("in", self.offset_in), ("mm", self.offset_mm)):
+            variable.trace_add("write", lambda *_args, unit=unit: self._update(unit))
 
-    def _update(self, *_args):
+    def _calculate(self, unit):
+        try:
+            reading = calculate_reading(variable.get() for variable in self.digits[unit])
+            if not math.isfinite(reading):
+                return
+        except (TypeError, ValueError, OverflowError):
+            return
+        offset = corrected_reading(
+            0, reading, self.scale_position.get(), self.jaw_fit.get(), self.tool,
+        )
+        self.calculated[unit] = True
+        self._writing_calculation = True
+        try:
+            (self.offset_in if unit == "in" else self.offset_mm).set(f"{offset:.4f}")
+        finally:
+            self._writing_calculation = False
+
+    def _update_calculations(self):
+        for unit in ("in", "mm"):
+            if self.calculated[unit]:
+                self._calculate(unit)
+        self._update()
+
+    def _update(self, unit=None):
+        if unit is not None and not self._writing_calculation:
+            self.calculated[unit] = False
         for key, variable in (("offset_in", self.offset_in), ("offset_mm", self.offset_mm)):
             try:
                 number = float(variable.get())
@@ -165,12 +202,15 @@ class CaliperCalculator(tk.Tk):
         self._build()
 
     def _build(self):
-        notebook = ttk.Notebook(self)
+        style = ttk.Style(self)
+        style.configure("Wide.TNotebook.Tab", width=12, padding=(6, 5),
+                        font=("TkDefaultFont", 10, "bold"))
+        notebook = ttk.Notebook(self, style="Wide.TNotebook")
         notebook.pack(fill="both", expand=True)
         for tool in TOOLS:
             page = ttk.Frame(notebook)
             notebook.add(page, text=tool)
-            sub_tabs = ttk.Notebook(page)
+            sub_tabs = ttk.Notebook(page, style="Wide.TNotebook")
             sub_tabs.pack(fill="both", expand=True)
             reading = MeasurementPanel(
                 sub_tabs, tool, self.settings[tool], self._save,
