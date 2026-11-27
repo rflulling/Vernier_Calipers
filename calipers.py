@@ -70,7 +70,9 @@ class MeasurementPanel(ttk.Frame):
 
     def update_result(self):
         try:
-            reading = calculate_reading(self.values[self.source.get()])
+            reading = calculate_reading(
+                variable.get() for variable in self.values[self.source.get()]
+            )
         except (TypeError, ValueError):
             reading = 0.0
         unit = self.source.get()
